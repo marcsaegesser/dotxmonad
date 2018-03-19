@@ -1,0 +1,22 @@
+Config  {
+        -- font = "-*-terminus-bold-r-*-*-12-*-*-*-*-*-*-*"
+        font = "xft:Iosevka Type:size=9:bold"
+        , bgColor = "black"
+        , fgColor = "grey"
+        , position = BottomW L 93
+        , lowerOnStart = True
+        , commands =    [ Run Memory ["-t","Mem: <usedratio>%"] 10
+			, Run Weather "KORD" ["-t"," ORD:<tempF>/<dewPointF>°F <windCardinal>@<windMph>","-L","50","-H","80","--normal","green","--high","red","--low","lightblue"] 36000
+			, Run Network "wlp4s0" [] 10
+			, Run Network "enp0s31f6" [] 10
+			, Run Battery [ "-t", " B:<left> " ] 600
+                        , Run Cpu ["-t", "CPU: <vbar>"] 10
+                        , Run CoreTemp ["--template", "CoreTemp: <core0>|<core1>|<core2>|<core3>°C", "--Low", "30", "--High", "79", "--low", "darkgreen", "--normal", "darkorange", "--high", "darkred"] 50
+                        , Run Date "%a %B %d %I:%M %p" "dt" 60
+			, Run Com "/home/msaegesser/bin/volume.sh" [] "volume" 10
+                        , Run StdinReader
+                        ]
+        , sepChar = "%"
+        , alignSep = "}{"
+        , template = "%StdinReader% }{ %battery% %wlp4s0% <fc=#CCCC00>%enp0s31f6%</fc> %cpu% %memory% %coretemp% Vol: %volume% %KORD% <fc=#57E9FF>%dt%</fc>"
+        }
