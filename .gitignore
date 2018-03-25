@@ -1,5 +1,6 @@
 xmonad.errors
 xmonad-x86*
+xmonad.state
 *-linux
 *.o
 *.hi
