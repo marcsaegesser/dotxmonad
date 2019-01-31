@@ -1,13 +1,14 @@
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
 import System.IO
--- import System.Posix.Env
+import System.Exit
+  -- import System.Posix.Env
 
 import Control.Monad
 --import Control.Monad                   (liftM2)
 
 import Data.List                       (isInfixOf)
-import Data.List.Split
+-- import Data.List.Split
 import Data.Map                        (fromList, union, Map)
 import Data.Monoid
 
@@ -25,6 +26,7 @@ import XMonad.Hooks.FadeInactive
 import XMonad.Layout.NoBorders
 import XMonad.Layout.ResizableTile
 import XMonad.Layout.Mosaic
+import XMonad.Layout.Tabbed
 
 import XMonad.Util.Run
 import XMonad.Util.Cursor
@@ -35,11 +37,13 @@ import XMonad.Util.SpawnOnce
 import XMonad.Actions.Warp
 import XMonad.Actions.Volume
 import XMonad.Actions.CopyWindow
+import XMonad.Actions.DynamicProjects
 
 import qualified XMonad.StackSet as W
 
 import XMonad.Prompt
 import XMonad.Prompt.Shell
+import XMonad.Prompt.ConfirmPrompt
 
 import DBus
 import DBus.Client
@@ -56,8 +60,8 @@ mprisCommand cmd = catchIO $ do
 main :: IO ()
 main = do
   myStatusBarPipe <- spawnPipe "xmobar"
-  xmonad $ docks $ withUrgencyHook NoUrgencyHook $ def
-    { terminal          = "xterm"
+  xmonad $ docks $ withUrgencyHook NoUrgencyHook $ dynamicProjects projects $ def
+    { terminal          = "urxvt"
     , workspaces        = myWorkspaces
     , modMask           = mod4Mask
     , layoutHook        = myLayoutHook
@@ -68,32 +72,101 @@ main = do
     , focusFollowsMouse = False
     }
 
+myXPConfig = def
+  { position          = Top
+  , alwaysHighlight   = True
+  , promptBorderWidth = 0
+  , font              = "xft:monospace:size=9"
+  , searchPredicate   = isInfixOf
+  }
+
 -- | Shifts a window to the specified workspace and then moves it down the stack.
 -- Useful for ordering windows from the StartupHook in a natural way.
 shiftAndDown w = doF W.swapDown <+> doShift w
 
 myManageHook :: Query (Endo WindowSet)
 myManageHook = composeOne
-  [ isDialog                     -?> doFloat
-  , className =? "trayer"        -?> doIgnore
-  , className =? "Emacs"         -?> doShift "emacs"
-  , className =? "HipChat"       -?> doShift "chat"
-  , className =? "Skype"         -?> doShift "chat"
-  , className =? "Spotify"       -?> doShift "media"  -- I give up. Spotify just won't shift
-  , appName   =? "spotify"       -?> doShift "media"  -- I give up. Spotify just won't shift
-  , appName   =? "libreoffice"   -?> doShift "office"
-  , appName   =* decodeWSName   --?> shiftAndDown
+  [ isDialog                        -?> doFloat
+  , className =? "trayer"           -?> doIgnore
+  , className =? "Emacs"            -?> doShift "emacs"
+  , className =? "HipChat"          -?> doShift "chat"
+  , className =? "Skype"            -?> doShift "chat"
+  , className =? "Spotify"          -?> doShift "media"  -- I give up. Spotify just won't shift
+  , appName   =? "spotify"          -?> doShift "media"  -- I give up. Spotify just won't shift
+  , appName   =? "libreoffice"      -?> doShift "office"
+  , appName   =? "gnome-calculator" -?> doFloat
+  -- , appName   =* decodeWSName   --?> shiftAndDown
   , return True                  -?> doF W.swapDown
   ] <+> scratchpadManageHookDefault <+> namedScratchpadManageHook myScratchpads
 
 myScratchpads :: [NamedScratchpad]
 myScratchpads = [
-      NS "htop" "xterm -name htop -e htop" (title =? "htop") (customFloating $ W.RationalRect (1/4) (1/6) (1/2) (2/3))
-    , NS "nautilus" "nautilus --no-desktop" (className =? "Nautilus") (customFloating $ W.RationalRect (1/6) (1/6) (2/3) (2/3))
+      NS "htop" spawnHtop findHtop (customFloating $ W.RationalRect (1/4) (1/6) (1/2) (2/3))
+    , NS "nautilus" spawnNautilus findNautilus (rightPanel 0.40)
+    , NS "spotify" spawnSpotify findSpotify (leftPanel 0.67)
+    , NS "calculator" spawnCalculator findCalculator defaultFloating
+    , NS "slack" spawnSlack findSlack (slackPanel 0.35)
     ]
+  where
+    spawnHtop = "urxvt -name htop -e htop"
+    findHtop = title =? "htop"
+
+    spawnNautilus = "nautilus --no-desktop"
+    findNautilus = className =? "Nautilus"
+
+    spawnCalculator = "gnome-calculator"
+    findCalculator = title =? "Calculator"
+
+    spawnSpotify = "spotify"
+    findSpotify = appName =? "spotify"
+
+    spawnSlack = "slack"
+    findSlack = className =? "Slack"
+
+    rightPanel w = customFloating $ W.RationalRect l t w h
+      where
+        h = 1
+        t = 1 - h
+        l = 1 - w
+
+    leftPanel w = customFloating $ W.RationalRect l t w h
+      where
+        h = 1
+        t = 1 - h
+        l = 0
+
+    slackPanel w = customFloating $ W.RationalRect l t w h
+      where
+        h = w * 1.5
+        t = 0
+        l = 1 - w
+
+-- myScratchpads :: [NamedScratchpad]
+-- myScratchpads = [
+--       NS "htop" "urxvt -name htop -e htop" (title =? "htop") (customFloating $ W.RationalRect (1/4) (1/6) (1/2) (2/3))
+--     , NS "nautilus" "nautilus --no-desktop" (className =? "Nautilus") (customFloating $ W.RationalRect (1/6) (1/6) (2/3) (2/3))
+--     , NS "calculator" "gnome-calculator" (title =? "gnome-calculator") (customFloating $ W.RationalRect (1/4) (1/6) (1/2) (2/3))
+--     ]
 
 myWorkspaces :: [String]
-myWorkspaces = [ "web", "emacs", "chat", "vm", "office", "media", "xterms", "8", "9", "0"]
+myWorkspaces = [ "web", "emacs", "chat", "vm", "office", "media", "terms", "8", "9", "0"]
+
+projects :: [Project]
+projects =
+  [ Project { projectName      = "terms"
+            , projectDirectory = "~/"
+            , projectStartHook = Just $ do spawn "urxvt"
+                                           spawn "urxvt"
+                                           spawn "urxvt"
+                                           spawn "urxvt"
+            }
+
+  , Project { projectName      = "web"
+            , projectDirectory = "~/download"
+            , projectStartHook = Just $ do spawn "google-chrome"
+                                           spawn "google-chrome --new-window news.google.com"
+            }
+  ]
 
 myKeys :: XConfig Layout -> Map (KeyMask, KeySym) (X ())
 myKeys conf@(XConfig {XMonad.modMask = modm}) = fromList $
@@ -102,9 +175,11 @@ myKeys conf@(XConfig {XMonad.modMask = modm}) = fromList $
   , ((modm                , xK_g          ), warpToWindow (1/2) (1/2))    -- Move pointer to focused window
   , ((modm                , xK_n          ), namedScratchpadAction myScratchpads "nautilus")
   , ((modm                , xK_o          ), namedScratchpadAction myScratchpads "htop")
+  , ((modm                , xK_c          ), namedScratchpadAction myScratchpads "calculator")
+  , ((modm                , xK_s          ), namedScratchpadAction myScratchpads "slack")
   , ((modm                , xK_F2         ), scratchpadSpawnAction conf)
-  , ((modm                , xK_F5         ), lowerVolume 2 >> return ())
-  , ((modm                , xK_F6         ), raiseVolume 2 >> return ())
+  , ((modm                , xK_p          ), shellPrompt myXPConfig)
+  , ((modm                , xK_slash      ), switchProjectPrompt def)
   , ((modm                , xK_F10        ), spawn "bin/stop-compton.sh")  -- Stop compton (doesn't get as confused as xcompmgr but sometimes still necessary)
   , ((modm                , xK_F11        ), spawn "bin/restart-compton.sh")  -- Restart compton
   , ((modm                , xK_F12        ), spawn "xscreensaver-command -lock")
@@ -113,6 +188,7 @@ myKeys conf@(XConfig {XMonad.modMask = modm}) = fromList $
   , ((modm                , xK_BackSpace  ), focusUrgent)     -- Urgency hints
   , ((modm .|. shiftMask  , xK_BackSpace  ), clearUrgents)
   , ((modm                , xK_b          ), sendMessage ToggleStruts)
+  , ((modm .|. shiftMask  , xK_q          ), confirmPrompt myXPConfig "exit" (io exitSuccess))
   , ((0                   , xK_Print      ), spawn "scrot")
   , ((0                   , 0x1008ff11    ), lowerVolume 2 >> return ())  -- Keyboard volume down
   , ((0                   , 0x1008ff13    ), raiseVolume 2 >> return ())  -- Keyboard volume up
@@ -136,26 +212,19 @@ myKeys conf@(XConfig {XMonad.modMask = modm}) = fromList $
 myStartupHook :: X ()
 myStartupHook = do
                 setDefaultCursor xC_left_ptr
-                spawnOnce "feh --bg-scale `feh -U -z /home/msaegesser/Pictures/B1bApproach.jpg | head -1`"
+                spawnOnce "feh --bg-scale `feh -U -z Pictures/B1bApproach.jpg | head -1`"
                 spawnOnce "trayer --edge bottom --align right --height 19 --width 7 --widthtype percent --transparent true"
                 spawnOnce "xscreensaver -no-splash"
                 spawnOnce "autocutsel -fork"
                 spawnOnce "autocutsel -selection PRIMARY -fork"
                 spawnOnce "SpiderOakONE"
-                spawnOnce "google-chrome"
-                spawnOnce "google-chrome --new-window news.google.com"
-                spawnOnce "emacs"
-                spawnOnce "hipchat4"
-                spawnOnce "xterm -name ws_xterms_0"
-                spawnOnce "xterm -name ws_xterms_1"
-                spawnOnce "xterm -name ws_xterms_2"
-                spawnOnce "xterm -name ws_xterms_3"
                 spawnOnce "ssh-add ~/.ssh/id_rsa"
                 spawnOnce "ssh-add ~/.ssh/git_rsa"
                 spawnOnce "compton --backend glx"
+                spawnOnce "das-keyboard-q"
 
 myLayoutHook = smartBorders $ avoidStruts $ standardLayouts
-  where standardLayouts = tiled ||| mosaic 2 [3,2]  ||| Mirror tiled ||| Full
+  where standardLayouts = tiled ||| simpleTabbed ||| mosaic 2 [3,2]  ||| Mirror tiled ||| Full
         tiled = ResizableTall nmaster delta ratio []
         nmaster = 1
         delta = 0.03
@@ -175,8 +244,8 @@ myLogHook p =  do
   fadeInactiveLogHook 0.6
 
 
-decodeWSName v = case splitOn "_" v of ("ws":n:_) -> Just n
-                                       _          -> Nothing
+-- decodeWSName v = case splitOn "_" v of ("ws":n:_) -> Just n
+--                                        _          -> Nothing
 
 
 infix 0 --->, --?>
